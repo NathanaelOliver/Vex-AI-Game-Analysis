@@ -1,6 +1,7 @@
 from collections import deque
-import pygame # TODO switch to pyqt library
+from PyQt5.QtWidgets import QApplication, QMainWindow, QLabel
 import math
+import random
 
 class Size:
     TILE = 120
@@ -215,6 +216,9 @@ class Alliance_Stake(Tile, Stake):
 class Mogo(Stake):
     def __init__(self, id, x, y):
         Stake.__init__(self, 6)
+        self.reset(id,x,y)
+    def reset(self, id, x, y):
+        Stake.reset(self)
         self.x = x
         self.y = y
         self.id = id
@@ -229,60 +233,72 @@ class Mogo(Stake):
         pygame.draw.polygon(screen, Color.BORDER, points, 1)
         Stake.display(self, screen, (self.x + position[0] - 1/16)*TILE_SIZE, (self.y + position[1]-.125)*TILE_SIZE)
 
-class Game:
+class Game_Controller:
+    NUMBER_OF_BATCHES = 100
+    BATCH_SIZE = 1000
+    MINI_BATCH_SIZE = 20
+    
     def __init__(self):
-        pygame.init()
-        self.clock = pygame.time.Clock()
-        self.screen = pygame.display.set_mode((TILE_SIZE * 7, TILE_SIZE * 7))
+        # TODO Make windows here
+        self.reset()
+        
+
+    
+
+    def train(self):
+        for batch in range(Game_Controller.NUMBER_OF_BATCHES):
+            for mini_batch in range(Game_Controller.BATCH_SIZE/Game_Controller.MINI_BATCH_SIZE):
+                # Which robot will be training in this mini batch
+                training_index = random.choice([0,1,2,3])
+                # TODO Get Model for other 3 robots
+                for game_number in range(Game_Controller.MINI_BATCH_SIZE):
+                    self.reset()
+                    # Play a game
+                    for time_step in range(120):
+                        for r, robot in enumerate (self.robots):
+                            self.apply_action(r)
+                            state = self.get_state(r, time_step)
+                            score = self.calculate_score(r)
+                            reward = score[0] - prev_score[0] - score[1] + prev_score[1]
+                            if r == training_index:
+
+                                robot.remember((prev_training_state, robot.action, reward, state))
+                                prev_training_state = state
+                                prev_score = score
+                            else:
+                                pass
+                # train game
+
+        '''
+        TODO Rework pinning
+        if robot.action == Action.BLOCK1 or robot.action == Action.BLOCK2:
+            self.apply_action(i)
+            robot.pinning += 1
+        else:
+            robot.pinning = max(0, robot.pinning - 1)
+        
+        if robot.pinning >= 5:
+            reward -= 10*robot.pinning
+        '''
+
+
+    def reset(self, model_numbers):
         self.field = Field()
-        self.red_score = 0
-        self.blue_score = 0
         self.robots = [Robot(1, Alliance.RED, 0, 2), Robot(2, Alliance.RED, 0, 5), Robot(3, Alliance.BLUE, 6, 2), Robot(4, Alliance.BLUE, 6, 5)]
         self.mogos = [Mogo(1,1,3), Mogo(2,3,1), Mogo(3,3,3), Mogo(4,3,5), Mogo(5,5,3)]
 
-    def run(self):
-        score = self.calculate_score()
-        running = True
-        for time_step in range(120):
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    running = False
+    def get_state(self, robot_index, time_step):
+        # TODO ensure symmetry
+        state = self.field.get_state(self.robots[robot_index].alliance)
+        for mogo in self.mogos:
+            state.extend(mogo.get_state())
+        for robot_index in [((robot_index + j) if robot_index % 2 == 0 else robot_index - j) % 4 for j in range(4)]:
+            state.extend(self.robots[robot_index].get_state())
+        score = self.calculate_score(robot_index)
+        state.extend([score[0], score[1], time_step])
+        return state
 
-            if running == False:
-                break
-            for i, robot in enumerate(self.robots):
-                if i != 0:
-                    continue
-                prev_score = score
-                self.apply_action(i)
-                # Calculate State of Game
-                state = self.field.get_state(robot.alliance)
-                for mogo in self.mogos:
-                    state.extend(mogo.get_state())
-                for robot_index in [((i + j) if i % 2 == 0 else i - j) % 4 for j in range(4)]:
-                    state.extend(self.robots[robot_index].get_state())
-                state.extend([score[0 if i < 2 else 1], score[1 if i < 2 else 1], time_step])
-
-                self.clock.tick(25)
-                self.update_ui()
-
-                # Get Robot Next Move
-                robot.get_action(state)
-                if robot.action == Action.BLOCK1 or robot.action == Action.BLOCK2:
-                    self.apply_action(i)
-                    robot.pinning += 1
-                else:
-                    robot.pinning = max(0, robot.pinning - 1)
-
-                score = self.calculate_score()
-
-                # TODO calculate Reward
-                reward = 0
-                if robot.pinning >= 5:
-                    reward -= 10*robot.pinning
-        pygame.quit()
-
-    def calculate_score(self):
+    def calculate_score(self, robot_index):
         red = 0
         blue = 0
         for mogo in self.mogos:
@@ -290,7 +306,7 @@ class Game:
             blue += mogo.get_score(Alliance.BLUE)
         red += self.field.get_score(Alliance.RED)
         blue += self.field.get_score(Alliance.BLUE)
-        return (red, blue)
+        return (red, blue) if self.robots[robot_index].alliance == Alliance.RED else (blue, red)
 
     def apply_action(self, robot_index):
         action = self.robots[robot_index].action
@@ -381,7 +397,11 @@ class Game:
         pygame.display.flip()
 
 
+'''
+training
+model vs model
+'''
 
 if __name__ == "__main__":
-    game = Game()
+    game = Game_Controller()
     game.run()
