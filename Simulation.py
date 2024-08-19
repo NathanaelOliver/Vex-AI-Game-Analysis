@@ -1,5 +1,5 @@
 from collections import deque
-import pygame # TODO switch to pyqt library
+import pygame
 import math
 
 class Size:
